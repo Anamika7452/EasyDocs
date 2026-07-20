@@ -5,6 +5,11 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Android 11+: read documents (PDF/DOCX) created by other apps in shared
+         storage, which scoped storage / MediaStore otherwise hides. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
         android:label="Easydocs"
         android:name="${applicationName}"
