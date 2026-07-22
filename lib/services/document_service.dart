@@ -20,4 +20,25 @@ class DocumentService {
       );
     }).toList();
   }
+
+  Future<String?> getDocumentFilePath(Document document) async {
+    return DocumentChannel.getDocumentFilePath(
+      uri: document.uri,
+      name: document.name,
+      extension: document.extension,
+    );
+  }
+
+  Future<Document?> getPendingDocument() async {
+    final pending = await DocumentChannel.getPendingDocument();
+
+    if (pending == null) return null;
+
+    return Document(
+      name: pending['name'] as String,
+      uri: pending['uri'] as String,
+      size: pending['size'] as int,
+      extension: pending['extension'] as String,
+    );
+  }
 }

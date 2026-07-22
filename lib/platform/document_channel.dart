@@ -46,6 +46,28 @@ class DocumentChannel {
     return _asMapList(folders);
   }
 
+  static Future<Map<String, dynamic>?> getPendingDocument() async {
+    final dynamic document = await _channel.invokeMethod('getPendingDocument');
+
+    if (document == null) return null;
+
+    return Map<String, dynamic>.from(document as Map);
+  }
+
+  static Future<String?> getDocumentFilePath({
+    required String uri,
+    required String name,
+    required String extension,
+  }) async {
+    final String? path = await _channel.invokeMethod('getDocumentFilePath', {
+      'uri': uri,
+      'name': name,
+      'extension': extension,
+    });
+
+    return path;
+  }
+
   /// Opens the native SAF folder picker. Android persists the URI permission
   /// and saves the folder.
   ///

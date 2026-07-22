@@ -3,6 +3,8 @@ package com.anamika.easydocs.scanner
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.anamika.easydocs.FileUtils
+import java.io.File
 
 /**
  * Recursively scans a SAF tree URI (a user-picked custom folder) for
@@ -12,7 +14,22 @@ import android.provider.DocumentsContract
  */
 object TreeUriScanner {
 
-    private val SUPPORTED = setOf("pdf", "docx")
+    private val SUPPORTED = setOf(
+        "pdf",
+        "docx",
+        "txt",
+        "md",
+        "rtf",
+        "json",
+        "xml",
+        "csv",
+        "log",
+        "yaml",
+        "yml",
+        "properties",
+        "ini",
+        "toml"
+    )
 
     fun scan(context: Context, treeUri: Uri): List<Map<String, Any>> {
 
@@ -63,7 +80,7 @@ object TreeUriScanner {
                     walk(context, treeUri, docId, out)
                 } else {
                     val ext = name.substringAfterLast('.', "").lowercase()
-                    if (ext in SUPPORTED) {
+                    if (ext in SUPPORTED || FileUtils.isSupported(File(name))) {
                         val fileUri = DocumentsContract.buildDocumentUriUsingTree(
                             treeUri,
                             docId

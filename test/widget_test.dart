@@ -82,4 +82,74 @@ void main() {
 
     expect(find.text('Scan Locations'), findsNothing);
   });
+
+  testWidgets('Tapping a PDF document opens the in-app viewer', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'getDocuments':
+          return <Map<String, dynamic>>[
+            {
+              'name': 'sample.pdf',
+              'uri': '/tmp/sample.pdf',
+              'size': 12345,
+              'extension': 'pdf',
+            },
+          ];
+        case 'getDocumentFilePath':
+          return '/tmp/sample.pdf';
+        case 'getSelectedFolders':
+          return <Map<String, dynamic>>[];
+        default:
+          return null;
+      }
+    });
+
+    await tester.pumpWidget(const EasyDocsApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('sample.pdf'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Document Viewer'), findsOneWidget);
+  });
+
+  testWidgets('Tapping a text file shows its contents as a preview', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'getDocuments':
+          return <Map<String, dynamic>>[
+            {
+              'name': 'notes.txt',
+              'uri': '/tmp/notes.txt',
+              'size': 256,
+              'extension': 'txt',
+            },
+          ];
+        case 'getDocumentFilePath':
+          return '/tmp/notes.txt';
+        case 'getSelectedFolders':
+          return <Map<String, dynamic>>[];
+        default:
+          return null;
+      }
+    });
+
+    await tester.runAsync(() async {
+      await File('/tmp/notes.txt').writeAsString('Hello from text preview');
+    });
+
+    await tester.pumpWidget(const EasyDocsApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('notes.txt'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Hello from text preview'), findsOneWidget);
+  });
 }

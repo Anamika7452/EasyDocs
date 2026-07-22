@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/document.dart';
 import '../services/document_service.dart';
 import '../widgets/scan_locations_sheet.dart';
+import 'document_viewer_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDocuments();
+    _handlePendingDocument();
   }
 
   @override
@@ -76,6 +78,20 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _requestPermission() async {
     await _documentService.requestStoragePermission();
     // Grant completes in system Settings; the resume handler re-scans.
+  }
+
+  Future<void> _handlePendingDocument() async {
+    final pending = await _documentService.getPendingDocument();
+    if (!mounted || pending == null) return;
+
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DocumentViewerScreen(document: pending),
+      ),
+    );
   }
 
   Future<void> _openScanLocations() async {
@@ -172,11 +188,20 @@ class _DocumentTile extends StatelessWidget {
     final theme = Theme.of(context);
 
     return ListTile(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DocumentViewerScreen(document: document),
+          ),
+        );
+      },
       leading: Icon(
         document.extension == 'pdf'
             ? Icons.picture_as_pdf
             : Icons.description,
-        color: theme.colorScheme.primary,
+        color: document.extension == 'pdf'
+            ? Colors.red
+            : theme.colorScheme.primary,
       ),
       title: Text(
         document.name,

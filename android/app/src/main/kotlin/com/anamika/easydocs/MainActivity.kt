@@ -1,5 +1,6 @@
 package com.anamika.easydocs
 
+import android.content.Intent
 import android.net.Uri
 import com.anamika.easydocs.picker.DefaultFolders
 import com.anamika.easydocs.picker.FolderInfo
@@ -24,6 +25,17 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var folderPicker: FolderPicker
     private lateinit var folderStorage: FolderStorage
     private val scanner = FolderScanner()
+    private var pendingDocument: Map<String, Any>? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingDocument = extractPendingDocument(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        pendingDocument = extractPendingDocument(intent)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -93,6 +105,39 @@ class MainActivity : FlutterFragmentActivity() {
                     }.start()
                 }
 
+                "getPendingDocument" -> {
+                    result.success(pendingDocument)
+                }
+
+                "getDocumentFilePath" -> {
+                    val uri = call.argument<String>("uri")
+                    val name = call.argument<String>("name")
+                    val extension = call.argument<String>("extension")
+
+                    when {
+                        uri.isNullOrBlank() -> result.error(
+                            "INVALID_ARGUMENT",
+                            "A non-empty 'uri' is required to resolve the document.",
+                            null
+                        )
+                        else -> {
+                            val path = runCatching {
+                                resolveDocumentPath(uri, name, extension)
+                            }
+                            path.fold(
+                                onSuccess = { result.success(it) },
+                                onFailure = {
+                                    result.error(
+                                        "DOCUMENT_ACCESS_FAILED",
+                                        it.message,
+                                        null
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -139,6 +184,84 @@ class MainActivity : FlutterFragmentActivity() {
      * Results are de-duplicated by uri so a document reachable through both a
      * default and an overlapping custom folder is only reported once.
      */
+    private fun extractPendingDocument(intent: Intent?): Map<String, Any>? {
+        if (intent == null) return null
+
+        val action = intent.action ?: return null
+        if (action != Intent.ACTION_VIEW) return null
+
+        val uri = intent.data ?: return null
+        val rawName = uri.lastPathSegment ?: intent.dataString?.substringAfterLast('/') ?: "shared_document"
+        val name = rawName.substringAfterLast('/').takeIf { it.isNotBlank() } ?: "shared_document"
+        val extension = inferExtension(name, intent.type, uri)
+
+        return mapOf(
+            "name" to name,
+            "uri" to uri.toString(),
+            "size" to 0,
+            "extension" to extension
+        )
+    }
+
+    private fun inferExtension(name: String, mimeType: String?, uri: Uri): String {
+        val fromName = name.substringAfterLast('.', "").lowercase()
+        if (fromName.isNotBlank()) return fromName
+
+        return when (mimeType?.lowercase()) {
+            "application/pdf" -> "pdf"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
+            "text/plain" -> "txt"
+            "application/json", "application/*+json" -> "json"
+            else -> {
+                val pathExt = uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
+                pathExt?.takeIf { it.isNotBlank() } ?: "bin"
+            }
+        }
+    }
+
+    private fun resolveDocumentPath(
+        uri: String,
+        name: String?,
+        extension: String?
+    ): String {
+        val parsedUri = Uri.parse(uri)
+        val fileName = when {
+            !name.isNullOrBlank() -> name
+            !extension.isNullOrBlank() -> "document.$extension"
+            else -> "document"
+        }
+
+        val targetFile = File(cacheDir, "documents/$fileName")
+        targetFile.parentFile?.mkdirs()
+
+        return when (parsedUri.scheme) {
+            "content" -> {
+                contentResolver.openInputStream(parsedUri)?.use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: throw IllegalStateException("Unable to read the selected document.")
+                targetFile.absolutePath
+            }
+            "file" -> {
+                val sourceFile = File(parsedUri.path ?: uri)
+                if (!sourceFile.exists()) {
+                    throw IllegalStateException("The selected document could not be found.")
+                }
+                sourceFile.copyTo(targetFile, overwrite = true)
+                targetFile.absolutePath
+            }
+            else -> {
+                val sourceFile = File(uri)
+                if (!sourceFile.exists()) {
+                    throw IllegalStateException("The selected document could not be found.")
+                }
+                sourceFile.copyTo(targetFile, overwrite = true)
+                targetFile.absolutePath
+            }
+        }
+    }
+
     private fun scanDocuments(): List<Map<String, Any>> {
 
         val byUri = LinkedHashMap<String, Map<String, Any>>()

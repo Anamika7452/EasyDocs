@@ -6,7 +6,19 @@ object FileUtils {
 
     private val supportedExtensions = setOf(
         "pdf",
-        "docx"
+        "docx",
+        "txt",
+        "md",
+        "rtf",
+        "json",
+        "xml",
+        "csv",
+        "log",
+        "yaml",
+        "yml",
+        "properties",
+        "ini",
+        "toml"
     )
 
     fun isSupported(file: File): Boolean {
