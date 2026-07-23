@@ -68,6 +68,25 @@ class DocumentChannel {
     return path;
   }
 
+  static Future<String> renameDocument({
+    required String uri,
+    required String newName,
+  }) async {
+    final String? renamedUri = await _channel.invokeMethod('renameDocument', {
+      'uri': uri,
+      'newName': newName,
+    });
+
+    if (renamedUri == null || renamedUri.isEmpty) {
+      throw PlatformException(
+        code: 'RENAME_FAILED',
+        message: 'Rename failed without a new URI.',
+      );
+    }
+
+    return renamedUri;
+  }
+
   /// Opens the native SAF folder picker. Android persists the URI permission
   /// and saves the folder.
   ///

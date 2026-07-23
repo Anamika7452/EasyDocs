@@ -16,8 +16,16 @@ object TreeUriScanner {
 
     private val SUPPORTED = setOf(
         "pdf",
+        "doc",
         "docx",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "odp",
         "txt",
+        "html",
+        "htm",
         "md",
         "rtf",
         "json",
@@ -28,7 +36,29 @@ object TreeUriScanner {
         "yml",
         "properties",
         "ini",
-        "toml"
+        "toml",
+        "jpg",
+        "jpeg",
+        "png",
+        "gif",
+        "bmp",
+        "webp",
+        "heic",
+        "heif",
+        "mp3",
+        "wav",
+        "aac",
+        "ogg",
+        "m4a",
+        "amr",
+        "mp4",
+        "mkv",
+        "mov",
+        "avi",
+        "flv",
+        "wmv",
+        "webm",
+        "3gp"
     )
 
     fun scan(context: Context, treeUri: Uri): List<Map<String, Any>> {

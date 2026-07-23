@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import '../models/document.dart';
 import '../platform/document_channel.dart';
+import 'package:flutter/services.dart';
 
 class DocumentService {
   Future<bool> hasStoragePermission() =>
@@ -22,11 +25,58 @@ class DocumentService {
   }
 
   Future<String?> getDocumentFilePath(Document document) async {
+    final uri = Uri.tryParse(document.uri);
+
+    if (uri == null || uri.scheme.isEmpty || uri.scheme == 'file') {
+      final path = uri == null || uri.scheme.isEmpty
+          ? document.uri
+          : uri.toFilePath();
+      final file = File(path);
+      if (await file.exists()) {
+        return file.path;
+      }
+    }
+
     return DocumentChannel.getDocumentFilePath(
       uri: document.uri,
       name: document.name,
       extension: document.extension,
     );
+  }
+
+  Future<String> renameDocument(Document document, String newName) async {
+    final uri = Uri.tryParse(document.uri);
+
+    if (uri == null || uri.scheme.isEmpty || uri.scheme == 'file') {
+      final filePath = uri == null || uri.scheme.isEmpty
+          ? document.uri
+          : uri.toFilePath();
+      final sourceFile = File(filePath);
+
+      if (!await sourceFile.exists()) {
+        throw Exception('Document not found.');
+      }
+
+      final targetFile = File(
+        '${sourceFile.parent.path}${Platform.pathSeparator}$newName',
+      );
+
+      if (await targetFile.exists()) {
+        throw Exception('A file with this name already exists.');
+      }
+
+      final moved = await sourceFile.rename(targetFile.path);
+      return moved.path;
+    }
+
+    try {
+      return await DocumentChannel.renameDocument(
+        uri: document.uri,
+        newName: newName,
+      );
+    } on MissingPluginException {
+      throw Exception('Rename is not supported on this platform.');
+    }
   }
 
   Future<Document?> getPendingDocument() async {

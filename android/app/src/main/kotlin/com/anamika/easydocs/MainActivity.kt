@@ -2,6 +2,8 @@ package com.anamika.easydocs
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
 import com.anamika.easydocs.picker.DefaultFolders
 import com.anamika.easydocs.picker.FolderInfo
 import com.anamika.easydocs.picker.FolderPicker
@@ -138,6 +140,34 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
 
+                "renameDocument" -> {
+                    val uri = call.argument<String>("uri")
+                    val newName = call.argument<String>("newName")
+
+                    when {
+                        uri.isNullOrBlank() || newName.isNullOrBlank() -> result.error(
+                            "INVALID_ARGUMENT",
+                            "A 'uri' and new file name are required.",
+                            null
+                        )
+                        else -> {
+                            val renamedUri = runCatching {
+                                renameDocument(uri, newName)
+                            }
+                            renamedUri.fold(
+                                onSuccess = { result.success(it) },
+                                onFailure = {
+                                    result.error(
+                                        "RENAME_FAILED",
+                                        it.message,
+                                        null
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -210,8 +240,34 @@ class MainActivity : FlutterFragmentActivity() {
         return when (mimeType?.lowercase()) {
             "application/pdf" -> "pdf"
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
+            "application/msword" -> "doc"
+            "application/vnd.ms-excel" -> "xls"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
+            "application/vnd.ms-powerpoint" -> "ppt"
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx"
+            "application/vnd.oasis.opendocument.presentation" -> "odp"
             "text/plain" -> "txt"
             "application/json", "application/*+json" -> "json"
+            "image/jpeg" -> "jpg"
+            "image/png" -> "png"
+            "image/gif" -> "gif"
+            "image/bmp" -> "bmp"
+            "image/webp" -> "webp"
+            "image/heic" -> "heic"
+            "image/heif" -> "heif"
+            "video/mp4" -> "mp4"
+            "video/x-matroska" -> "mkv"
+            "video/quicktime" -> "mov"
+            "video/x-msvideo" -> "avi"
+            "video/x-flv" -> "flv"
+            "video/x-ms-wmv" -> "wmv"
+            "video/webm" -> "webm"
+            "audio/mpeg" -> "mp3"
+            "audio/wav", "audio/x-wav" -> "wav"
+            "audio/aac" -> "aac"
+            "audio/ogg" -> "ogg"
+            "audio/mp4" -> "m4a"
+            "audio/amr" -> "amr"
             else -> {
                 val pathExt = uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
                 pathExt?.takeIf { it.isNotBlank() } ?: "bin"
@@ -262,21 +318,65 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun renameDocument(uri: String, newName: String): String {
+        val parsedUri = Uri.parse(uri)
+
+        return when (parsedUri.scheme) {
+            "content" -> {
+                val renamedUri = DocumentsContract.renameDocument(contentResolver, parsedUri, newName)
+                renamedUri?.toString()
+                    ?: throw IllegalStateException("Could not rename the selected document.")
+            }
+            "file" -> {
+                val sourceFile = File(parsedUri.path ?: uri)
+                if (!sourceFile.exists()) {
+                    throw IllegalStateException("The selected document could not be found.")
+                }
+                val targetFile = File(sourceFile.parentFile, newName)
+                if (targetFile.exists()) {
+                    throw IllegalStateException("A file with this name already exists.")
+                }
+                if (!sourceFile.renameTo(targetFile)) {
+                    throw IllegalStateException("Could not rename the selected document.")
+                }
+                targetFile.absolutePath
+            }
+            else -> {
+                val sourceFile = File(uri)
+                if (!sourceFile.exists()) {
+                    throw IllegalStateException("The selected document could not be found.")
+                }
+                val targetFile = File(sourceFile.parentFile, newName)
+                if (targetFile.exists()) {
+                    throw IllegalStateException("A file with this name already exists.")
+                }
+                if (!sourceFile.renameTo(targetFile)) {
+                    throw IllegalStateException("Could not rename the selected document.")
+                }
+                targetFile.absolutePath
+            }
+        }
+    }
+
     private fun scanDocuments(): List<Map<String, Any>> {
 
         val byUri = LinkedHashMap<String, Map<String, Any>>()
 
-        // Default folders — filesystem walk (requires all-files access).
+        // Scan common device storage roots, including the shared Download/
+        // Documents locations and the main external storage root, so the app
+        // can discover supported documents even when the user has not picked a
+        // specific folder.
         val files = mutableListOf<File>()
-        for (path in DefaultFolders.paths()) {
-            scanner.scanFolder(File(path), files)
+        for (folder in scanRoots()) {
+            scanner.scanFolder(folder, files)
         }
         for (file in files) {
+            val uri = file.canonicalPathOrAbsolute()
             byUri.putIfAbsent(
-                file.absolutePath,
+                uri,
                 mapOf(
                     "name" to file.name,
-                    "uri" to file.absolutePath,
+                    "uri" to uri,
                     "size" to file.length(),
                     "extension" to file.extension.lowercase()
                 )
@@ -293,5 +393,61 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         return byUri.values.toList()
+    }
+
+    private fun scanRoots(): List<File> {
+        val roots = mutableListOf<File>()
+
+        for (path in storageRoots()) {
+            val folder = File(path)
+            if (folder.exists() && folder.isDirectory && folder.canRead()) {
+                roots.add(folder)
+            }
+        }
+
+        return roots.filter { root ->
+            roots.none { other ->
+                other !== root && isAncestor(other, root)
+            }
+        }
+    }
+
+    private fun isAncestor(parent: File, child: File): Boolean {
+        val parentPath = parent.canonicalPathOrAbsolute()
+        val childPath = child.canonicalPathOrAbsolute()
+        return childPath.startsWith(parentPath + File.separator)
+    }
+
+    private fun File.canonicalPathOrAbsolute(): String {
+        return runCatching { canonicalPath }.getOrElse { absolutePath }
+    }
+
+    private fun storageRoots(): List<String> {
+        val roots = linkedSetOf<String>()
+
+        DefaultFolders.paths().forEach(roots::add)
+        roots.add(Environment.getExternalStorageDirectory().absolutePath)
+        roots.add("/sdcard")
+        roots.add("/storage/emulated/0")
+
+        // Common WhatsApp document/media locations used by the app when files are
+        // exported or stored in shared storage rather than app-private folders.
+        listOf(
+            "/sdcard/WhatsApp/Media",
+            "/sdcard/WhatsApp/Documents",
+            "/sdcard/Android/media/com.whatsapp/WhatsApp/Media",
+            "/sdcard/Android/media/com.whatsapp/WhatsApp/Documents",
+            "/storage/emulated/0/WhatsApp/Media",
+            "/storage/emulated/0/WhatsApp/Documents",
+            "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media",
+            "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Documents"
+        ).forEach(roots::add)
+
+        externalMediaDirs
+            .filterNotNull()
+            .map { it.absolutePath }
+            .forEach(roots::add)
+
+        return roots.toList()
     }
 }

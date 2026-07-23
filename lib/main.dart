@@ -18,6 +18,11 @@ class EasyDocsApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ).copyWith(
+          surface: const Color(0xFFE8F2FF),
+          background: const Color(0xFFE8F2FF),
+          surfaceVariant: const Color(0xFFDCE7FF),
         ),
         useMaterial3: true,
       ),

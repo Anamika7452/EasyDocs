@@ -58,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       final documents = await _documentService.getDocuments();
+      documents.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted) return;
       setState(() {
         _hasPermission = true;
@@ -100,6 +101,86 @@ class _HomeScreenState extends State<HomeScreen>
     if (mounted) _loadDocuments();
   }
 
+  void _sortDocuments() {
+    _documents.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  Future<void> _renameDocument(Document document) async {
+    final newName = await _showRenameDialog(document);
+    if (newName == null || newName.trim().isEmpty) return;
+
+    try {
+      final normalizedName = _normalizeRename(newName.trim(), document.extension);
+      if (normalizedName == document.name) {
+        return;
+      }
+
+      final renamedUri = await _documentService.renameDocument(document, normalizedName);
+      if (!mounted) return;
+
+      setState(() {
+        _documents = _documents.map((d) {
+          if (d.uri == document.uri) {
+            return Document(
+              name: normalizedName,
+              uri: renamedUri,
+              size: d.size,
+              extension: d.extension,
+            );
+          }
+          return d;
+        }).toList();
+        _sortDocuments();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Renamed to "$normalizedName".')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Rename failed: $error')),
+      );
+    }
+  }
+
+  Future<String?> _showRenameDialog(Document document) async {
+    final controller = TextEditingController(text: document.name);
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Rename document'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'New file name',
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('Rename'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _normalizeRename(String name, String extension) {
+    if (name.contains('.')) return name;
+    if (extension.trim().isEmpty) return name;
+    return '$name.$extension';
+  }
+
   List<Document> get _filtered {
     if (_query.trim().isEmpty) return _documents;
     final q = _query.toLowerCase();
@@ -110,8 +191,16 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      backgroundColor: theme.colorScheme.background,
       appBar: AppBar(
+        backgroundColor: theme.colorScheme.background,
+        surfaceTintColor: theme.colorScheme.background,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: const Text('EasyDocs'),
         centerTitle: true,
         actions: [
@@ -122,28 +211,26 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openScanLocations,
-        tooltip: 'Scan locations',
-        child: const Icon(Icons.folder_open),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              onChanged: (value) => setState(() => _query = value),
-              decoration: InputDecoration(
-                hintText: 'Search documents...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: SafeArea(
+        child: Container(
+          color: theme.colorScheme.background,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              TextField(
+                onChanged: (value) => setState(() => _query = value),
+                decoration: InputDecoration(
+                  hintText: 'Search documents...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(child: _buildContent()),
-          ],
+              const SizedBox(height: 16),
+              Expanded(child: _buildContent()),
+            ],
+          ),
         ),
       ),
     );
@@ -172,16 +259,20 @@ class _HomeScreenState extends State<HomeScreen>
       child: ListView.separated(
         itemCount: docs.length,
         separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (context, index) => _DocumentTile(document: docs[index]),
+        itemBuilder: (context, index) => _DocumentTile(
+          document: docs[index],
+          onRename: _renameDocument,
+        ),
       ),
     );
   }
 }
 
 class _DocumentTile extends StatelessWidget {
-  const _DocumentTile({required this.document});
+  const _DocumentTile({required this.document, required this.onRename});
 
   final Document document;
+  final ValueChanged<Document> onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -195,13 +286,10 @@ class _DocumentTile extends StatelessWidget {
           ),
         );
       },
+      onLongPress: () => onRename(document),
       leading: Icon(
-        document.extension == 'pdf'
-            ? Icons.picture_as_pdf
-            : Icons.description,
-        color: document.extension == 'pdf'
-            ? Colors.red
-            : theme.colorScheme.primary,
+        _iconData(document.extension),
+        color: _iconColor(document.extension, theme),
       ),
       title: Text(
         document.name,
@@ -215,6 +303,104 @@ class _DocumentTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static IconData _iconData(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+      case 'odp':
+        return Icons.slideshow;
+      case 'txt':
+      case 'md':
+      case 'rtf':
+        return Icons.notes;
+      case 'html':
+      case 'htm':
+      case 'json':
+      case 'xml':
+      case 'csv':
+        return Icons.code;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'heic':
+      case 'heif':
+        return Icons.image;
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+      case 'ogg':
+      case 'm4a':
+      case 'amr':
+        return Icons.audiotrack;
+      case 'mp4':
+      case 'mkv':
+      case 'mov':
+      case 'avi':
+      case 'flv':
+      case 'wmv':
+      case 'webm':
+      case '3gp':
+        return Icons.movie;
+      default:
+        return Icons.description;
+    }
+  }
+
+  static Color _iconColor(String extension, ThemeData theme) {
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        return Colors.red;
+      case 'xls':
+      case 'xlsx':
+        return Colors.green;
+      case 'ppt':
+      case 'pptx':
+      case 'odp':
+        return Colors.orange;
+      case 'doc':
+      case 'docx':
+        return Colors.blue;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'heic':
+      case 'heif':
+        return Colors.purple;
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+      case 'ogg':
+      case 'm4a':
+      case 'amr':
+        return Colors.indigo;
+      case 'mp4':
+      case 'mkv':
+      case 'mov':
+      case 'avi':
+      case 'flv':
+      case 'wmv':
+      case 'webm':
+      case '3gp':
+        return Colors.teal;
+      default:
+        return theme.colorScheme.primary;
+    }
   }
 
   static String _formatSize(int bytes) {

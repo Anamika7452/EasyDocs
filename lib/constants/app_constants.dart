@@ -1,6 +1,26 @@
 class AppConstants {
   static const supportedExtensions = [
     'pdf',
+    'doc',
     'docx',
+    'xls',
+    'xlsx',
+    'ppt',
+    'pptx',
+    'odp',
+    'txt',
+    'html',
+    'htm',
+    'md',
+    'rtf',
+    'json',
+    'xml',
+    'csv',
+    'log',
+    'yaml',
+    'yml',
+    'properties',
+    'ini',
+    'toml',
   ];
 }
